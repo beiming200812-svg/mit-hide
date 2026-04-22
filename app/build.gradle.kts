@@ -13,8 +13,11 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+
+        // 仅适配你的联想Y700四代 arm64-v8a
         ndk {
-            abiFilters += listOf("arm64-v8a","armeabi-v7a","x86","x86_64")
+            abiFilters.clear()
+            abiFilters.add("arm64-v8a")
         }
     }
 
@@ -45,6 +48,8 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.7.0")
+    implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
+    // 补上缺失的Material主题依赖，彻底解决主题找不到报错
+    implementation("com.google.android.material:material:1.12.0")
 }
