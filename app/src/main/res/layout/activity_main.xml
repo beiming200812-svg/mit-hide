@@ -3,26 +3,34 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#f0f0f0">
+    android:background="#FFFFFF">
+
+    <!-- 左上角空白点击呼出菜单 -->
+    <View
+        android:id="@+id/v_menu_anchor"
+        android:layout_width="wrap_content"
+        android:layout_height="48dp"
+        android:minWidth="48dp"
+        android:background="#00000000"/>
 
     <TextView
         android:id="@+id/tv_path"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="12dp"
-        android:textColor="#333333"
-        android:textSize="14sp"
-        android:singleLine="false"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="10dp"
+        android:textColor="#222222"
         android:maxLines="2"
-        android:ellipsize="end"/>
+        android:ellipsize="middle"
+        android:singleLine="false"/>
 
     <ListView
         android:id="@+id/lv_files"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:paddingHorizontal="8dp"
-        android:background="#ffffff"
-        android:divider="#e0e0e0"
+        android:paddingHorizontal="6dp"
+        android:background="#FFFFFF"
+        android:divider="#EEEEEE"
         android:dividerHeight="1dp"/>
 
 </LinearLayout>
