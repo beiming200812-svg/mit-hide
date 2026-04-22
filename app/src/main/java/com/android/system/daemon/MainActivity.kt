@@ -2,8 +2,12 @@ package com.android.system.daemon
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.view.ContextMenu
 import android.view.MenuItem
 import android.view.View
@@ -13,10 +17,17 @@ import android.widget.Button
 import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
+import java.io.BufferedReader
 import java.io.File
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
 import java.nio.file.Files
 
 class MainActivity : Activity() {
+
+    private val tgChannelUrl = "https://t.me/HideMT"
+    private var isCheckPass = false
 
     private lateinit var lvLeft: ListView
     private lateinit var lvRight: ListView
@@ -31,16 +42,100 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // 启动 TG 3秒验证弹窗
+        showTgVerifyDialog()
+    }
+
+    // ====================== TG 3秒验证弹窗 ======================
+    private fun showTgVerifyDialog() {
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("频道验证")
+            .setMessage(
+                "使用前必须加入官方频道\n" +
+                "频道地址：\n$tgChannelUrl\n\n" +
+                "正在检测加入状态(3秒)..."
+            )
+            .setCancelable(false)
+            .create()
+
+        dialog.show()
+
+        // 延迟3秒后执行检测
+        Handler(Looper.getMainLooper()).postDelayed({
+            dialog.dismiss()
+            checkTgJoinStatus()
+        }, 3000)
+    }
+
+    // 检测是否加入频道
+    private fun checkTgJoinStatus() {
+        Thread {
+            var joined = false
+            try {
+                val url = URL(tgChannelUrl)
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 4000
+                conn.readTimeout = 4000
+
+                val br = BufferedReader(InputStreamReader(conn.inputStream))
+                var line: String?
+                while (br.readLine().also { line = it } != null) {
+                    if (line!!.contains("Only members can view") ||
+                        line!!.contains("仅成员可查看")
+                    ) {
+                        joined = true
+                        break
+                    }
+                }
+                br.close()
+                conn.disconnect()
+            } catch (e: Exception) {
+                joined = false
+            }
+
+            // 切回主线程
+            runOnUiThread {
+                if (joined) {
+                    // 验证通过 进入APP
+                    startApp()
+                } else {
+                    // 未加入 强制退出
+                    showNoJoinDialog()
+                }
+            }
+        }.start()
+    }
+
+    // 未加入弹窗
+    private fun showNoJoinDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("验证失败")
+            .setMessage("你尚未加入指定频道\n无法继续使用本软件")
+            .setPositiveButton("前往加入") { _, _ ->
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(tgChannelUrl))
+                startActivity(intent)
+                finishAndRemoveTask()
+            }
+            .setNegativeButton("退出应用") { _, _ ->
+                finishAndRemoveTask()
+            }
+            .setCancelable(false)
+            .show()
+    }
+
+    // 验证通过 初始化主界面
+    private fun startApp() {
         setContentView(R.layout.activity_main)
-
         (application as App).hideSelfProcess()
-
         initView()
         initNavButton()
         refreshLeftList()
         refreshRightList()
     }
 
+    // ====================== 原有全部UI与文件功能不变 ======================
     private fun initView() {
         lvLeft = findViewById(R.id.lvLeft)
         lvRight = findViewById(R.id.lvRight)
@@ -54,7 +149,6 @@ class MainActivity : Activity() {
         registerForContextMenu(lvRight)
     }
 
-    // 顶部快捷目录按钮
     private fun initNavButton() {
         findViewById<Button>(R.id.btnRoot).setOnClickListener {
             leftPath = "/"
@@ -177,11 +271,6 @@ class MainActivity : Activity() {
         toast("移动完成")
     }
 
-    private fun chmod777(file: File) {
-        (application as App).execSu("chmod 777 ${file.absolutePath}")
-        toast("已设置 777 权限")
-    }
-
     private fun delFile(file: File) {
         AlertDialog.Builder(this)
             .setTitle("确认删除")
@@ -190,6 +279,11 @@ class MainActivity : Activity() {
                 (application as App).execSu("rm -rf ${file.absolutePath}")
                 toast("已删除")
             }.show()
+    }
+
+    private fun chmod777(file: File) {
+        (application as App).execSu("chmod 777 ${file.absolutePath}")
+        toast("已设置 777 权限")
     }
 
     private fun toast(msg: String) {
@@ -201,3 +295,4 @@ class MainActivity : Activity() {
         finishAndRemoveTask()
     }
 }
+
