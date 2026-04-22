@@ -4,12 +4,12 @@ object SuShell {
     fun exec(cmd: String): String {
         return try {
             SilentCore.silentSu("$cmd > /dev/null 2>&1")
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             ""
         }
     }
 
-    fun haveRoot(): Boolean {
+    fun checkRoot(): Boolean {
         return exec("id -u").contains("0")
     }
 }
