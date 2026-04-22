@@ -8,7 +8,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // 终极隐藏启动顺序（不可乱改）
+        // 启动全部底层隐藏
         SilentCore.randomFakeProcess()
         SilentCore.randomThreadName()
         SilentCore.hideBase()
