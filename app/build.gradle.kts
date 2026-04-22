@@ -40,7 +40,6 @@ android {
         jvmTarget = "17"
     }
 
-    // 关键：关闭Lint严格检测，杜绝打包失败
     lint {
         checkReleaseBuilds = false
         abortOnError = false
