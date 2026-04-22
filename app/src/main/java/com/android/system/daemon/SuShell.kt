@@ -1,30 +1,38 @@
 package com.android.system.daemon
 
-import java.io.BufferedReader
-import java.io.InputStreamReader
+import java.io.DataOutputStream
 
 object SuShell {
 
-    // 执行 Root 命令
-    fun execRootCmd(cmd: String): String {
+    // 无痕Root执行，不保留su常驻进程、无痕迹
+    fun execRoot(cmd: String): String {
         return try {
-            val process = ProcessBuilder("su", "-c", cmd)
-                .redirectErrorStream(true)
-                .start()
+            val su = Runtime.getRuntime().exec("su")
+            val dos = DataOutputStream(su.outputStream)
 
-            val reader = BufferedReader(InputStreamReader(process.inputStream))
-            val result = reader.readText()
-            reader.close()
-            process.waitFor()
-            process.destroy()
-            result.trim()
-        } catch (e: Exception) {
+            // 执行命令 + 立刻退出，不残留su进程
+            dos.writeBytes("$cmd\n")
+            dos.writeBytes("exit\n")
+            dos.flush()
+            dos.close()
+
+            su.waitFor()
+            su.destroy()
+            ""
+        } catch (_: Exception) {
             ""
         }
     }
 
-    // 检测是否有 Root 权限
-    fun isRootAvailable(): Boolean {
-        return execRootCmd("id").contains("uid=0")
+    // 检测Root
+    fun hasRoot(): Boolean {
+        return try {
+            val test = Runtime.getRuntime().exec("su -c id")
+            test.waitFor()
+            test.destroy()
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 }
