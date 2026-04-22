@@ -7,7 +7,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 全底层隐藏 安卓16稳定生效
         SilentCore.randomFakeProcess()
         SilentCore.randomThreadName()
         SilentCore.hideBase()
