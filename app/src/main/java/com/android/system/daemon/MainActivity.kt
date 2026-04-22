@@ -9,44 +9,222 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.view.ContextMenu
+import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.*
 
 class MainActivity : Activity() {
 
     private val tgChannelUrl = "https://t.me/HideMT"
+    private lateinit var leftListView: ListView
+    private lateinit var rightListView: ListView
+    private lateinit var leftPathText: TextView
+    private lateinit var rightPathText: TextView
 
-    private lateinit var lvLeft: ListView
-    private lateinit var lvRight: ListView
-    private lateinit var pathLeftTxt: TextView
-    private lateinit var pathRightTxt: TextView
+    private var leftCurrentPath: String = Environment.getExternalStorageDirectory().absolutePath
+    private var rightCurrentPath: String = Environment.getExternalStorageDirectory().absolutePath
+    private var showHiddenFiles: Boolean = false
 
-    private var leftPath = Environment.getExternalStorageDirectory().absolutePath
-    private var rightPath = Environment.getExternalStorageDirectory().absolutePath
-
-    private var selectFile: File? = null
-    private var isLeftSelect = true
+    private var leftSelectedFile: File? = null
+    private var rightSelectedFile: File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         initView()
-        initNavButton()
-        refreshLeftList()
-        refreshRightList()
+        initGlobalRootMount()
+        refreshLeftFileList()
+        refreshRightFileList()
 
         Handler(Looper.getMainLooper()).postDelayed({
             startChannelVerify()
         }, 1000)
+    }
+
+    private fun initView() {
+        leftListView = findViewById(R.id.lv_left)
+        rightListView = findViewById(R.id.lv_right)
+        leftPathText = findViewById(R.id.tv_left_path)
+        rightPathText = findViewById(R.id.tv_right_path)
+
+        leftListView.onItemClickListener = leftItemClick
+        rightListView.onItemClickListener = rightItemClick
+        registerForContextMenu(leftListView)
+        registerForContextMenu(rightListView)
+    }
+
+    private fun initGlobalRootMount() {
+        val app = application as App
+        app.execSu("mount -o rw,remount /")
+        app.execSu("mount -o rw,remount /system")
+        app.execSu("mount -o rw,remount /vendor")
+    }
+
+    private val leftItemClick = AdapterView.OnItemClickListener { _, _, position, _ ->
+        val fileList = getFileList(leftCurrentPath)
+        if (position < fileList.size) {
+            val target = fileList[position]
+            if (target.isDirectory) {
+                leftCurrentPath = target.absolutePath
+                refreshLeftFileList()
+            } else {
+                leftSelectedFile = target
+            }
+        }
+    }
+
+    private val rightItemClick = AdapterView.OnItemClickListener { _, _, position, _ ->
+        val fileList = getFileList(rightCurrentPath)
+        if (position < fileList.size) {
+            val target = fileList[position]
+            if (target.isDirectory) {
+                rightCurrentPath = target.absolutePath
+                refreshRightFileList()
+            } else {
+                rightSelectedFile = target
+            }
+        }
+    }
+
+    private fun getFileList(path: String): List<File> {
+        val dir = File(path)
+        val list = mutableListOf<File>()
+        dir.listFiles()?.forEach {
+            if (!it.name.startsWith(".") || showHiddenFiles) {
+                list.add(it)
+            }
+        }
+        list.sortWith(compareBy({!it.isDirectory}, {it.name.lowercase()}))
+        return list
+    }
+
+    private fun refreshLeftFileList() {
+        leftPathText.text = leftCurrentPath
+        val files = getFileList(leftCurrentPath)
+        val displayList = files.map {
+            if (it.isDirectory) "[Dir] ${it.name}" else it.name
+        }
+        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, displayList)
+        leftListView.adapter = adapter
+    }
+
+    private fun refreshRightFileList() {
+        rightPathText.text = rightCurrentPath
+        val files = getFileList(rightCurrentPath)
+        val displayList = files.map {
+            if (it.isDirectory) "[Dir] ${it.name}" else it.name
+        }
+        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, displayList)
+        rightListView.adapter = adapter
+    }
+
+    override fun onCreateContextMenu(menu: ContextMenu?, v: View?, menuInfo: ContextMenu.ContextMenuInfo?) {
+        super.onCreateContextMenu(menu, v, menuInfo)
+        menu?.add("Copy")
+        menu?.add("Move")
+        menu?.add("Delete")
+        menu?.add("Rename")
+        menu?.add("Chmod")
+        menu?.add("Properties")
+        menu?.add("Toggle Hidden Files")
+    }
+
+    override fun onContextItemSelected(item: MenuItem): Boolean {
+        when (item.title) {
+            "Toggle Hidden Files" -> {
+                showHiddenFiles = !showHiddenFiles
+                refreshLeftFileList()
+                refreshRightFileList()
+            }
+            "Copy" -> copySelectedFile()
+            "Move" -> moveSelectedFile()
+            "Delete" -> deleteSelectedFile()
+            "Rename" -> renameSelectedFile()
+            "Chmod" -> showChmodDialog()
+            "Properties" -> showFileProperties()
+        }
+        return true
+    }
+
+    private fun copySelectedFile() {
+        val source = leftSelectedFile ?: return
+        val targetDir = File(rightCurrentPath)
+        Thread {
+            runCatching {
+                copyRecursive(source, File(targetDir, source.name))
+                runOnUiThread { refreshRightFileList(); toast("Copy Success") }
+            }.onFailure { runOnUiThread { toast("Copy Failed") } }
+        }.start()
+    }
+
+    private fun moveSelectedFile() {
+        val source = leftSelectedFile ?: return
+        val target = File(rightCurrentPath, source.name)
+        val app = application as App
+        app.execSu("mv ${source.absolutePath} ${target.absolutePath}")
+        refreshLeftFileList()
+        refreshRightFileList()
+    }
+
+    private fun deleteSelectedFile() {
+        val target = leftSelectedFile ?: rightSelectedFile ?: return
+        val app = application as App
+        app.execSu("rm -rf ${target.absolutePath}")
+        refreshLeftFileList()
+        refreshRightFileList()
+    }
+
+    private fun renameSelectedFile() {
+        val target = leftSelectedFile ?: return
+        val newName = System.currentTimeMillis().toString()
+        val app = application as App
+        app.execSu("mv ${target.absolutePath} ${target.parent}/$newName")
+        refreshLeftFileList()
+    }
+
+    private fun showChmodDialog() {
+        val target = leftSelectedFile ?: return
+        val app = application as App
+        app.execSu("chmod 777 ${target.absolutePath}")
+        toast("Chmod 777 Complete")
+    }
+
+    private fun showFileProperties() {
+        val target = leftSelectedFile ?: return
+        val size = target.length()
+        val time = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ENGLISH).format(Date(target.lastModified()))
+        AlertDialog.Builder(this)
+            .setTitle("File Properties")
+            .setMessage("Path: ${target.absolutePath}\nSize: $size bytes\nModify Time: $time")
+            .setPositiveButton("OK", null)
+            .show()
+    }
+
+    private fun copyRecursive(source: File, target: File) {
+        if (source.isDirectory) {
+            target.mkdirs()
+            source.listFiles()?.forEach { copyRecursive(it, File(target, it.name)) }
+        } else {
+            FileInputStream(source).use { input ->
+                FileOutputStream(target).use { output ->
+                    input.copyTo(output)
+                }
+            }
+        }
     }
 
     private fun startChannelVerify() {
@@ -94,148 +272,6 @@ class MainActivity : Activity() {
             .show()
     }
 
-    private fun initView() {
-        lvLeft = findViewById(R.id.lvLeft)
-        lvRight = findViewById(R.id.lvRight)
-        pathLeftTxt = findViewById(R.id.pathLeftTxt)
-        pathRightTxt = findViewById(R.id.pathRightTxt)
-        lvLeft.onItemClickListener = clickLeft
-        lvRight.onItemClickListener = clickRight
-        registerForContextMenu(lvLeft)
-        registerForContextMenu(lvRight)
-    }
-
-    private fun initNavButton() {
-        findViewById<Button>(R.id.btnRoot).setOnClickListener {
-            leftPath = "/"
-            rightPath = "/"
-            refreshLeftList()
-            refreshRightList()
-        }
-        findViewById<Button>(R.id.btnData).setOnClickListener {
-            leftPath = "/data"
-            rightPath = "/data"
-            refreshLeftList()
-            refreshRightList()
-        }
-        findViewById<Button>(R.id.btnSdcard).setOnClickListener {
-            leftPath = "/sdcard"
-            rightPath = "/sdcard"
-            refreshLeftList()
-            refreshRightList()
-        }
-        findViewById<Button>(R.id.btnStorage).setOnClickListener {
-            leftPath = "/storage"
-            rightPath = "/storage"
-            refreshLeftList()
-            refreshRightList()
-        }
-    }
-
-    private val clickLeft = AdapterView.OnItemClickListener { _, _, pos, _ ->
-        val fileList = File(leftPath).listFiles() ?: return@OnItemClickListener
-        if (pos == 0) {
-            leftPath = File(leftPath).parent ?: leftPath
-            refreshLeftList()
-            return@OnItemClickListener
-        }
-        val f = fileList[pos - 1]
-        if (f.isDirectory) {
-            leftPath = f.absolutePath
-            refreshLeftList()
-        }
-    }
-
-    private val clickRight = AdapterView.OnItemClickListener { _, _, pos, _ ->
-        val fileList = File(rightPath).listFiles() ?: return@OnItemClickListener
-        if (pos == 0) {
-            rightPath = File(rightPath).parent ?: rightPath
-            refreshRightList()
-            return@OnItemClickListener
-        }
-        val f = fileList[pos - 1]
-        if (f.isDirectory) {
-            rightPath = f.absolutePath
-            refreshRightList()
-        }
-    }
-
-    override fun onCreateContextMenu(menu: ContextMenu?, v: View?, info: ContextMenu.ContextMenuInfo?) {
-        super.onCreateContextMenu(menu, v, info)
-        val adInfo = info as AdapterView.AdapterContextMenuInfo
-        if (adInfo.position == 0) return
-        isLeftSelect = v == lvLeft
-        val path = if (isLeftSelect) leftPath else rightPath
-        val files = File(path).listFiles() ?: return
-        selectFile = files[adInfo.position - 1]
-        menu?.add("Copy")
-        menu?.add("Move")
-        menu?.add("Delete")
-        menu?.add("Chmod 777")
-        menu?.add("Rename")
-    }
-
-    override fun onContextItemSelected(item: MenuItem): Boolean {
-        val target = if (isLeftSelect) File(rightPath) else File(leftPath)
-        val file = selectFile ?: return true
-        when (item.title) {
-            "Copy" -> copyFile(file, target)
-            "Move" -> moveFile(file, target)
-            "Delete" -> delFile(file)
-            "Chmod 777" -> chmod777(file)
-            "Rename" -> toast("Unsupported")
-        }
-        refreshLeftList()
-        refreshRightList()
-        return true
-    }
-
-    private fun refreshLeftList() {
-        pathLeftTxt.text = leftPath
-        val items = arrayListOf("..Parent")
-        File(leftPath).listFiles()?.forEach {
-            items.add(if (it.isDirectory) "[Dir] ${it.name}" else it.name)
-        }
-        lvLeft.adapter = ArrayAdapter(this, R.layout.item_file, R.id.tvFileName, items)
-    }
-
-    private fun refreshRightList() {
-        pathRightTxt.text = rightPath
-        val items = arrayListOf("..Parent")
-        File(rightPath).listFiles()?.forEach {
-            items.add(if (it.isDirectory) "[Dir] ${it.name}" else it.name)
-        }
-        lvRight.adapter = ArrayAdapter(this, R.layout.item_file, R.id.tvFileName, items)
-    }
-
-    private fun copyFile(src: File, dir: File) {
-        runCatching {
-            if (src.isDirectory) {
-                (application as App).execSu("cp -r ${src.absolutePath} ${dir.absolutePath}/")
-            } else {
-                java.nio.file.Files.copy(src.toPath(), File(dir, src.name).toPath())
-            }
-            toast("Success")
-        }.onFailure {
-            toast("Failed")
-        }
-    }
-
-    private fun moveFile(src: File, dir: File) {
-        (application as App).execSu("mv ${src.absolutePath} ${dir.absolutePath}/")
-        toast("Success")
-    }
-
-    private fun delFile(file: File) {
-        (application as App).execSu("rm -rf ${file.absolutePath}")
-        toast("Deleted")
-    }
-
-    private fun chmod777(file: File) {
-        (application as App).execSu("chmod 777 ${file.absolutePath}")
-        toast("Complete")
-    }
-
     private fun toast(text: String) {
         Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
     }
@@ -245,7 +281,11 @@ class MainActivity : Activity() {
     }
 
     override fun onBackPressed() {
-        finishAndRemoveTask()
+        if (leftCurrentPath != "/") {
+            leftCurrentPath = File(leftCurrentPath).parent ?: "/"
+            refreshLeftFileList()
+        } else {
+            finishAndRemoveTask()
+        }
     }
 }
-
