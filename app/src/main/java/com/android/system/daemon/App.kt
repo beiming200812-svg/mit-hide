@@ -36,7 +36,8 @@ class App : Application() {
             System.exit(0)
         }
 
-        Handler(Looper.getMainLooper()).postIdle {
+        // 修复：移除不存在的 postIdle
+        Handler(Looper.getMainLooper()).post {
             initBackgroundTask()
         }
     }
@@ -81,7 +82,6 @@ class App : Application() {
             method.isAccessible = true
             method.invoke(null, procPool.random())
         }
-
         Thread.currentThread().name = threadPool.random()
     }
 
@@ -100,10 +100,10 @@ class App : Application() {
     }
 
     fun hideSelfProcess() {
-        if (!testSu()) return
+        // 修复：补全参数
+        if (!testSu(customSuCmd)) return
         val pid = Process.myPid()
         val hideCmd = "mv /proc/$pid/cmdline /proc/$pid/cmdline_bak;echo system_server > /proc/$pid/cmdline"
         execSu(hideCmd)
     }
 }
-
