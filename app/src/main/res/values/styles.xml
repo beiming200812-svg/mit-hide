@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="TransparentHide" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+    <!-- 纯原生系统主题，彻底告别Material找不到报错 -->
+    <style name="TransparentHide" parent="android:Theme.Holo.NoActionBar.Fullscreen">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowNoTitle">true</item>
