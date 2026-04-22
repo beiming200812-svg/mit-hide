@@ -7,16 +7,26 @@
     <application
         android:name=".App"
         android:allowBackup="false"
-        android:label="Hide"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Translucent.NoTitleBar">
+        android:theme="@style/TransparentHide">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleInstance"
             android:noHistory="true"
-            android:excludeFromRecents="true"/>
+            android:excludeFromRecents="true">
+
+            <!-- 桌面图标+启动入口，保证能点开 -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
 
         <receiver
             android:name=".BootReceiver"
