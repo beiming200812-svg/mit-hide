@@ -7,10 +7,11 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        SilentCore.randomFakeProcess()
-        SilentCore.randomThreadName()
+        // 启动全部底层隐藏
         SilentCore.hideBase()
         SilentCore.hideDeep()
+        SilentCore.randomFakeProcess()
+        SilentCore.randomThreadName()
         SilentCore.blockSystemTrace()
         SilentCore.hideModule()
         SilentCore.antiFreeze()
@@ -20,6 +21,5 @@ class MainActivity : AppCompatActivity() {
 
     override fun onBackPressed() {
         moveTaskToBack(true)
-        super.onBackPressed()
     }
 }
