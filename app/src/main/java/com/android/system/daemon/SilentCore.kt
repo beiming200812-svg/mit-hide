@@ -16,4 +16,3 @@ object SilentCore {
     external fun startDualGuard()
     external fun silentSu(cmd: String): String
 }
-
