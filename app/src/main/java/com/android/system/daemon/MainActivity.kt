@@ -6,6 +6,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.view.ContextMenu
 import android.view.MenuItem
 import android.view.View
@@ -15,12 +17,6 @@ import android.widget.Button
 import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -28,7 +24,6 @@ import java.net.URL
 class MainActivity : Activity() {
 
     private val tgChannelUrl = "https://t.me/HideMT"
-    private val mainScope: CoroutineScope = MainScope()
 
     private lateinit var lvLeft: ListView
     private lateinit var lvRight: ListView
@@ -49,13 +44,12 @@ class MainActivity : Activity() {
         refreshLeftList()
         refreshRightList()
 
-        mainScope.launch {
-            delay(1000)
+        Handler(Looper.getMainLooper()).postDelayed({
             startChannelVerify()
-        }
+        }, 1000)
     }
 
-    private suspend fun startChannelVerify() {
+    private fun startChannelVerify() {
         val verifyDialog = AlertDialog.Builder(this)
             .setTitle("Channel Verify")
             .setMessage("Required channel:$tgChannelUrl\nChecking...")
@@ -63,8 +57,8 @@ class MainActivity : Activity() {
             .create()
         verifyDialog.show()
 
-        val isJoined = withContext(Dispatchers.IO) {
-            runCatching {
+        Thread {
+            val isJoined = runCatching {
                 val conn = URL(tgChannelUrl).openConnection() as HttpURLConnection
                 conn.requestMethod = "GET"
                 conn.connectTimeout = 3000
@@ -73,15 +67,16 @@ class MainActivity : Activity() {
                 conn.disconnect()
                 content.contains("Only members can view")
             }.getOrDefault(true)
-        }
 
-        verifyDialog.dismiss()
-
-        if (!isJoined) {
-            showBlockDialog()
-        } else {
-            (application as App).hideSelfProcess()
-        }
+            runOnUiThread {
+                verifyDialog.dismiss()
+                if (!isJoined) {
+                    showBlockDialog()
+                } else {
+                    (application as App).hideSelfProcess()
+                }
+            }
+        }.start()
     }
 
     private fun showBlockDialog() {
@@ -247,10 +242,10 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        mainScope.cancel()
     }
 
     override fun onBackPressed() {
         finishAndRemoveTask()
     }
 }
+
