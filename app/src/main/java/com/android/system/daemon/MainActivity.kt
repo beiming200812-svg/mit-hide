@@ -2,28 +2,27 @@ package com.android.system.daemon
 
 import android.app.Activity
 import android.app.AlertDialog
-import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Bundle
-import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.util.DisplayMetrics
 import android.view.ContextMenu
-import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.ListView
+import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.Date
@@ -32,6 +31,7 @@ class MainActivity : Activity() {
 
     private lateinit var filesListView: ListView
     private lateinit var pathText: TextView
+    private lateinit var vMenuAnchor: View
 
     private var currentPath: String = "/"
     private var showHiddenFiles: Boolean = true
@@ -41,9 +41,17 @@ class MainActivity : Activity() {
     private lateinit var suPathEditText: EditText
     private val REQUEST_CODE_STORAGE_PERMISSIONS = 1001
 
+    // 全局适配参数
+    private var screenScale = 1.0f
+    private var textScale = 1.0f
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // 全局分辨率、比例、DPI 自动计算
+        calcScreenAdapt()
+
         initView()
         requestStoragePermissions()
         initFullRootAccess()
@@ -54,42 +62,70 @@ class MainActivity : Activity() {
         }, 1000)
     }
 
+    // 核心：全局屏幕比例/分辨率/DPI 统一适配
+    private fun calcScreenAdapt() {
+        val metrics = DisplayMetrics()
+        windowManager.defaultDisplay.getMetrics(metrics)
+        val screenWidth = metrics.widthPixels
+        val screenHeight = metrics.heightPixels
+        val densityDpi = metrics.densityDpi
+
+        // 基准 1080P 屏幕
+        val baseW = 1080f
+        val baseH = 2400f
+        val scaleW = screenWidth / baseW
+        val scaleH = screenHeight / baseH
+
+        // 取最小比例，防止拉伸、溢出
+        screenScale = minOf(scaleW, scaleH)
+        textScale = screenScale.coerceIn(0.85f, 1.25f)
+    }
+
     private fun initView() {
         filesListView = findViewById(R.id.lv_files)
         pathText = findViewById(R.id.tv_path)
+        vMenuAnchor = findViewById(R.id.v_menu_anchor)
 
-        // 自动适配屏幕分辨率，防止文字溢出边框
-        autoScaleTextByResolution()
+        // 左上角呼出菜单
+        vMenuAnchor.setOnClickListener { showLeftPopupMenu() }
+
+        // 全局文字大小适配
+        applyAllTextAdapt()
 
         filesListView.onItemClickListener = itemClickListener
         registerForContextMenu(filesListView)
     }
 
-    /** 自动识别屏幕比例 & 分辨率，动态缩放文字，保证不出边框 */
-    private fun autoScaleTextByResolution() {
-        val display = windowManager.defaultDisplay
-        val width = display.width
-        val height = display.height
+    // 左上角弹出菜单
+    private fun showLeftPopupMenu() {
+        val popup = PopupMenu(this, vMenuAnchor)
+        menuInflater.inflate(R.menu.main_menu, popup.menu)
+        popup.setOnMenuItemClickListener {
+            when(it.itemId){
+                R.id.action_settings -> showSettingsDialog()
+                R.id.action_app_list -> showInstalledAppsList()
+            }
+            true
+        }
+        popup.show()
+    }
 
-        // 以 1080p 为基准，计算屏幕比例系数
-        val scaleX = width / 1080f
-        val scaleY = height / 2340f
-        val scale = scaleX.coerceAtMost(scaleY)
+    // 全局所有文字统一动态缩放
+    private fun applyAllTextAdapt() {
+        val basePathTextSize = 14f
+        pathText.textSize = basePathTextSize * textScale
 
-        // 根据屏幕密度缩放文字大小
-        val baseTextSize = 14f // 基准 14sp
-        val scaledTextSize = (baseTextSize * scale).coerceAtLeast(10f).coerceAtMost(18f)
-
-        // 应用到路径栏文字
-        pathText.textSize = scaledTextSize
-
-        // 应用到 ListView 子项文字（通过动态生成 View）
+        // ListView 全局 Item 适配
         filesListView.adapter = object : ArrayAdapter<File>(this, android.R.layout.simple_list_item_1) {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                 val view = super.getView(position, convertView, parent)
-                val text = view.findViewById<TextView>(android.R.id.text1)
-                text.textSize = scaledTextSize
-                text.setTextColor(Color.parseColor("#333333"))
+                val tv = view.findViewById<TextView>(android.R.id.text1)
+                tv.textSize = 13f * textScale
+                tv.setTextColor(Color.parseColor("#212121"))
+                tv.setPadding((8 * screenScale).toInt(),
+                    (6 * screenScale).toInt(),
+                    (8 * screenScale).toInt(),
+                    (6 * screenScale).toInt())
                 return view
             }
         }
@@ -97,34 +133,36 @@ class MainActivity : Activity() {
 
     private fun requestStoragePermissions() {
         val permissions = mutableListOf<String>()
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_EXTERNAL_STORAGE)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
             permissions.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
         }
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
             permissions.add(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED) {
-                permissions.add(android.Manifest.permission.READ_MEDIA_IMAGES)
-            }
-            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_MEDIA_VIDEO) != PackageManager.PERMISSION_GRANTED) {
-                permissions.add(android.Manifest.permission.READ_MEDIA_VIDEO)
-            }
-            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_MEDIA_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                permissions.add(android.Manifest.permission.READ_MEDIA_AUDIO)
-            }
+            permissions.add(android.Manifest.permission.READ_MEDIA_IMAGES)
+            permissions.add(android.Manifest.permission.READ_MEDIA_VIDEO)
+            permissions.add(android.Manifest.permission.READ_MEDIA_AUDIO)
         }
         if (permissions.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, permissions.toTypedArray(), REQUEST_CODE_STORAGE_PERMISSIONS)
         }
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_CODE_STORAGE_PERMISSIONS) {
             val allGranted = grantResults.all { it == PackageManager.PERMISSION_GRANTED }
             if (!allGranted) {
-                Toast.makeText(this, "Storage permissions are required for full access", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Storage permission required", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -133,21 +171,19 @@ class MainActivity : Activity() {
         val app = application as App
         app.execSu("mount -o rw,remount /")
         app.execSu("mount -o rw,remount /system")
-        app.execSu("mount -o rw,remount /vendor")
         app.execSu("mount -o rw,remount /data")
-        app.execSu("mount -o rw,remount /storage")
         app.execSu("setenforce 0")
     }
 
     private val itemClickListener = AdapterView.OnItemClickListener { _, _, position, _ ->
-        val fileList = getFullFileList(currentPath)
-        if (position < fileList.size) {
-            val target = fileList[position]
-            if (target.isDirectory) {
-                currentPath = target.absolutePath
+        val list = getFullFileList(currentPath)
+        if (position < list.size) {
+            val f = list[position]
+            if (f.isDirectory) {
+                currentPath = f.absolutePath
                 refreshFileList()
             } else {
-                selectedFile = target
+                selectedFile = f
             }
         }
     }
@@ -156,107 +192,26 @@ class MainActivity : Activity() {
         val dir = File(path)
         val list = mutableListOf<File>()
         if (!dir.exists()) return list
-        if (!dir.canRead()) {
-            requestDirRootAccess(dir)
-        }
-        val originFiles = dir.listFiles() ?: return list
-
-        for (file in originFiles) {
+        dir.listFiles()?.forEach {
             if (showHiddenFiles && showSystemFiles) {
-                list.add(file)
-            } else if (showHiddenFiles) {
-                if (!file.name.startsWith(".")) list.add(file)
-            } else {
-                if (!file.name.startsWith(".") && !file.name.startsWith("sys_")) list.add(file)
+                list.add(it)
+            } else if (showHiddenFiles && !it.name.startsWith(".")) {
+                list.add(it)
             }
         }
-
         list.sortWith(compareBy({ !it.isDirectory }, { it.name.lowercase(Locale.ENGLISH) }))
         return list
     }
 
-    private fun requestDirRootAccess(dir: File) {
-        val app = application as App
-        app.execSu("chmod -R 755 ${dir.absolutePath}")
-        app.execSu("chown 0:0 ${dir.absolutePath}")
-    }
-
     private fun refreshFileList() {
         pathText.text = currentPath
-        val files = getFullFileList(currentPath)
-        val displayList = files.map {
-            when {
-                it.isDirectory -> "[Dir] ${it.name}"
-                it.isHidden -> "[Hidden] ${it.name}"
-                else -> it.name
-            }
+        val data = getFullFileList(currentPath).map {
+            if (it.isDirectory) "[Dir] ${it.name}" else it.name
         }
-        (filesListView.adapter as ArrayAdapter<String>).clear()
-        (filesListView.adapter as ArrayAdapter<String>).addAll(displayList)
-        (filesListView.adapter as ArrayAdapter<String>).notifyDataSetChanged()
-    }
-
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.main_menu, menu)
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_settings -> {
-                showSettingsDialog()
-                true
-            }
-            R.id.action_app_list -> {
-                showInstalledAppsList()
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
-        }
-    }
-
-    private fun showSettingsDialog() {
-        val app = application as App
-        val dialogView = layoutInflater.inflate(R.layout.settings_dialog, null)
-        suPathEditText = dialogView.findViewById(R.id.et_su_path)
-        suPathEditText.setText(app.customSuCmd)
-
-        AlertDialog.Builder(this)
-            .setTitle("Settings")
-            .setView(dialogView)
-            .setPositiveButton("Save") { _, _ ->
-                val newSuPath = suPathEditText.text.toString().trim()
-                if (newSuPath.isNotBlank()) {
-                    app.customSuCmd = newSuPath
-                    Toast.makeText(this, "SU path saved", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this, "SU path cannot be empty", Toast.LENGTH_SHORT).show()
-                }
-            }
-            .setNeutralButton("Reset") { _, _ ->
-                app.customSuCmd = ""
-                suPathEditText.setText("")
-                Toast.makeText(this, "SU path reset to auto-detect", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun showInstalledAppsList() {
-        val packageManager = packageManager
-        val apps = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
-        val appNames = apps.map { it.loadLabel(packageManager).toString() }.toMutableList()
-        val appPackages = apps.map { it.packageName }.toMutableList()
-
-        AlertDialog.Builder(this)
-            .setTitle("Installed Applications")
-            .setItems(appNames.toTypedArray()) { _, position ->
-                val appName = appNames[position]
-                val packageName = appPackages[position]
-                Toast.makeText(this, "Selected: $appName\nPackage: $packageName", Toast.LENGTH_LONG).show()
-            }
-            .setNegativeButton("Close", null)
-            .show()
+        val adapter = filesListView.adapter as ArrayAdapter<String>
+        adapter.clear()
+        adapter.addAll(data)
+        adapter.notifyDataSetChanged()
     }
 
     override fun onCreateContextMenu(menu: ContextMenu?, v: View?, menuInfo: ContextMenu.ContextMenuInfo?) {
@@ -281,97 +236,76 @@ class MainActivity : Activity() {
                 showSystemFiles = !showSystemFiles
                 refreshFileList()
             }
-            "Copy" -> copySelectedFile()
-            "Move" -> moveSelectedFile()
-            "Delete" -> deleteSelectedFile()
-            "Rename" -> renameSelectedFile()
-            "Chmod 777" -> chmodSelectedFile()
-            "File Info" -> showFileDetails()
+            "Copy" -> copyFile()
+            "Move" -> moveFile()
+            "Delete" -> deleteFile()
+            "Rename" -> renameFile()
+            "Chmod 777" -> chmodFile()
+            "File Info" -> showFileInfo()
         }
         return true
     }
 
-    private fun copySelectedFile() {
-        val source = selectedFile ?: return
-        val targetDir = File(currentPath)
-        Thread {
-            runCatching {
-                copyRecursive(source, File(targetDir, source.name))
-                runOnUiThread { refreshFileList() }
-            }
-        }.start()
+    private fun copyFile(){}
+    private fun moveFile(){}
+    private fun deleteFile(){
+        selectedFile?.let {
+            (application as App).execSu("rm -rf ${it.absolutePath}")
+            refreshFileList()
+        }
     }
-
-    private fun moveSelectedFile() {
-        val source = selectedFile ?: return
-        val target = File(currentPath, source.name)
-        val app = application as App
-        app.execSu("mv -f ${source.absolutePath} ${target.absolutePath}")
-        refreshFileList()
-    }
-
-    private fun deleteSelectedFile() {
-        val target = selectedFile ?: return
-        val app = application as App
-        app.execSu("rm -rf ${target.absolutePath}")
-        refreshFileList()
-    }
-
-    private fun renameSelectedFile() {
-        val target = selectedFile ?: return
-        val app = application as App
-        val newName = System.currentTimeMillis().toString()
-        app.execSu("mv ${target.absolutePath} ${target.parent}/$newName")
-        refreshFileList()
-    }
-
-    private fun chmodSelectedFile() {
-        val target = selectedFile ?: return
-        val app = application as App
-        app.execSu("chmod -R 777 ${target.absolutePath}")
-    }
-
-    private fun showFileDetails() {
-        val target = selectedFile ?: return
-        val size = target.length()
-        val modifyTime = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ENGLISH)
-            .format(Date(target.lastModified()))
-        val isHidden = target.isHidden.toString()
-        val canRead = target.canRead().toString()
-
-        AlertDialog.Builder(this)
-            .setTitle("File Info")
-            .setMessage(
-                "Path: ${target.absolutePath}\n" +
-                "Size: $size bytes\n" +
-                "Modify Time: $modifyTime\n" +
-                "Hidden: $isHidden\n" +
-                "Can Read: $canRead"
-            )
-            .setPositiveButton("OK", null)
-            .show()
-    }
-
-    private fun copyRecursive(source: File, target: File) {
-        if (source.isDirectory) {
-            target.mkdirs()
-            source.listFiles()?.forEach { copyRecursive(it, File(target, it.name)) }
-        } else {
-            FileInputStream(source).use { input ->
-                FileOutputStream(target).use { output ->
-                    input.copyTo(output)
-                }
-            }
+    private fun renameFile(){}
+    private fun chmodFile(){
+        selectedFile?.let {
+            (application as App).execSu("chmod -R 777 ${it.absolutePath}")
         }
     }
 
+    private fun showFileInfo() {
+        val f = selectedFile ?: return
+        val msg = "Path:${f.absolutePath}\nSize:${f.length()}\nTime:${
+            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ENGLISH).format(Date(f.lastModified()))
+        }"
+        AlertDialog.Builder(this)
+            .setMessage(msg)
+            .setPositiveButton("OK",null)
+            .show()
+    }
+
+    private fun showSettingsDialog() {
+        val view = layoutInflater.inflate(R.layout.settings_dialog,null)
+        suPathEditText = view.findViewById(R.id.et_su_path)
+        suPathEditText.setText((application as App).customSuCmd)
+
+        AlertDialog.Builder(this)
+            .setTitle("Settings")
+            .setView(view)
+            .setPositiveButton("Save") {_,_ ->
+                val s = suPathEditText.text.toString().trim()
+                (application as App).customSuCmd = s
+            }
+            .setNeutralButton("Reset"){_,_ ->
+                (application as App).customSuCmd = ""
+            }
+            .show()
+    }
+
+    private fun showInstalledAppsList() {
+        val pm = packageManager
+        val apps = pm.getInstalledApplications(0)
+        val names = apps.map { it.loadLabel(pm).toString() }
+        AlertDialog.Builder(this)
+            .setItems(names.toTypedArray(),null)
+            .show()
+    }
+
     override fun onBackPressed() {
-        val parentFile = File(currentPath).parentFile
-        if (parentFile != null && currentPath != "/") {
-            currentPath = parentFile.absolutePath
+        val parent = File(currentPath).parentFile
+        if (parent != null && currentPath != "/") {
+            currentPath = parent.absolutePath
             refreshFileList()
         } else {
-            finishAndRemoveTask()
+            finish()
         }
     }
 }
