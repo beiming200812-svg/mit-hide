@@ -17,6 +17,9 @@ import android.widget.Button
 import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 
 class MainActivity : Activity() {
 
@@ -35,40 +38,36 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 先加载布局，杜绝空白卡死
         setContentView(R.layout.activity_main)
         initView()
         initNavButton()
         refreshLeftList()
         refreshRightList()
 
-        // 延迟弹出TG验证，不阻塞启动
         Handler(Looper.getMainLooper()).postDelayed({
             showTgVerifyDialog()
         }, 800)
     }
 
-    // 弹窗纯UI，不卡APP
     private fun showTgVerifyDialog() {
         val dialog = AlertDialog.Builder(this)
-            .setTitle("频道验证")
-            .setMessage(
-                "使用前必须加入官方频道\n" +
-                "频道：$tgChannelUrl\n\n" +
-                "正在后台验证..."
-            )
+            .setTitle("Channel Verify")
+            .setMessage("Official channel required\n$tgChannelUrl\nChecking...")
             .setCancelable(false)
             .create()
         dialog.show()
 
-        // 后台异步验证，绝不卡界面
         Thread {
             var joined = false
             try {
-                val conn = java.net.URL(tgChannelUrl).openConnection() as java.net.HttpURLConnection
-                conn.requestMethod = "HEAD"
+                val conn = URL(tgChannelUrl).openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
                 conn.connectTimeout = 3000
                 conn.readTimeout = 3000
+                val input = conn.inputStream.bufferedReader().readLine()
+                if (input.contains("Only members can view")) {
+                    joined = true
+                }
                 conn.disconnect()
             } catch (_: Exception) {
                 joined = true
@@ -87,13 +86,13 @@ class MainActivity : Activity() {
 
     private fun showNoJoinDialog() {
         AlertDialog.Builder(this)
-            .setTitle("验证失败")
-            .setMessage("请先加入 Telegram 频道\n$tgChannelUrl")
-            .setPositiveButton("前往加入") { _, _ ->
+            .setTitle("Verify Failed")
+            .setMessage("Please join channel first\n$tgChannelUrl")
+            .setPositiveButton("Join Now") { _, _ ->
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(tgChannelUrl)))
                 finishAndRemoveTask()
             }
-            .setNegativeButton("退出") { _, _ ->
+            .setNegativeButton("Exit") { _, _ ->
                 finishAndRemoveTask()
             }
             .setCancelable(false)
@@ -128,22 +127,24 @@ class MainActivity : Activity() {
             leftPath = "/sdcard"
             rightPath = "/sdcard"
             refreshLeftList()
+            refreshRightList()
         }
         findViewById<Button>(R.id.btnStorage).setOnClickListener {
             leftPath = "/storage"
             rightPath = "/storage"
             refreshLeftList()
+            refreshRightList()
         }
     }
 
     private val clickLeft = AdapterView.OnItemClickListener { _, _, pos, _ ->
-        val list = java.io.File(leftPath).listFiles() ?: return@OnItemClickListener
+        val fileList = File(leftPath).listFiles() ?: return@OnItemClickListener
         if (pos == 0) {
-            leftPath = java.io.File(leftPath).parent ?: leftPath
+            leftPath = File(leftPath).parent ?: leftPath
             refreshLeftList()
             return@OnItemClickListener
         }
-        val f = list[pos - 1]
+        val f = fileList[pos - 1]
         if (f.isDirectory) {
             leftPath = f.absolutePath
             refreshLeftList()
@@ -151,13 +152,13 @@ class MainActivity : Activity() {
     }
 
     private val clickRight = AdapterView.OnItemClickListener { _, _, pos, _ ->
-        val list = java.io.File(rightPath).listFiles() ?: return@OnItemClickListener
+        val fileList = File(rightPath).listFiles() ?: return@OnItemClickListener
         if (pos == 0) {
-            rightPath = java.io.File(rightPath).parent ?: rightPath
+            rightPath = File(rightPath).parent ?: rightPath
             refreshRightList()
             return@OnItemClickListener
         }
-        val f = list[pos - 1]
+        val f = fileList[pos - 1]
         if (f.isDirectory) {
             rightPath = f.absolutePath
             refreshRightList()
@@ -170,24 +171,24 @@ class MainActivity : Activity() {
         if (adInfo.position == 0) return
         isLeftSelect = v == lvLeft
         val path = if (isLeftSelect) leftPath else rightPath
-        val files = java.io.File(path).listFiles() ?: return
+        val files = File(path).listFiles() ?: return
         selectFile = files[adInfo.position - 1]
-        menu?.add("复制到对面窗口")
-        menu?.add("移动到对面窗口")
-        menu?.add("删除")
-        menu?.add("ROOT权限 777")
-        menu?.add("重命名")
+        menu?.add("Copy")
+        menu?.add("Move")
+        menu?.add("Delete")
+        menu?.add("Chmod 777")
+        menu?.add("Rename")
     }
 
     override fun onContextItemSelected(item: MenuItem): Boolean {
-        val target = if (isLeftSelect) java.io.File(rightPath) else java.io.File(leftPath)
+        val target = if (isLeftSelect) File(rightPath) else File(leftPath)
         val file = selectFile ?: return true
         when (item.title) {
-            "复制到对面窗口" -> copyFile(file, target)
-            "移动到对面窗口" -> moveFile(file, target)
-            "删除" -> delFile(file)
-            "ROOT权限 777" -> chmod777(file)
-            "重命名" -> toast("暂未开放")
+            "Copy" -> copyFile(file, target)
+            "Move" -> moveFile(file, target)
+            "Delete" -> delFile(file)
+            "Chmod 777" -> chmod777(file)
+            "Rename" -> toast("Not Support")
         }
         refreshLeftList()
         refreshRightList()
@@ -196,53 +197,53 @@ class MainActivity : Activity() {
 
     private fun refreshLeftList() {
         pathLeftTxt.text = leftPath
-        val items = arrayListOf("..上级")
-        java.io.File(leftPath).listFiles()?.forEach {
-            items.add(if (it.isDirectory) "[文件夹] ${it.name}" else it.name)
+        val items = arrayListOf("..Parent")
+        File(leftPath).listFiles()?.forEach {
+            items.add(if (it.isDirectory) "[Dir] ${it.name}" else it.name)
         }
         lvLeft.adapter = ArrayAdapter(this, R.layout.item_file, R.id.tvFileName, items)
     }
 
     private fun refreshRightList() {
         pathRightTxt.text = rightPath
-        val items = arrayListOf("..上级")
-        java.io.File(rightPath).listFiles()?.forEach {
-            items.add(if (it.isDirectory) "[文件夹] ${it.name}" else it.name)
+        val items = arrayListOf("..Parent")
+        File(rightPath).listFiles()?.forEach {
+            items.add(if (it.isDirectory) "[Dir] ${it.name}" else it.name)
         }
         lvRight.adapter = ArrayAdapter(this, R.layout.item_file, R.id.tvFileName, items)
     }
 
-    private fun copyFile(src: java.io.File, dir: java.io.File) {
+    private fun copyFile(src: File, dir: File) {
         try {
             if (src.isDirectory) {
                 (application as App).execSu("cp -r ${src.absolutePath} ${dir.absolutePath}/")
             } else {
-                java.nio.file.Files.copy(src.toPath(), java.io.File(dir, src.name).toPath())
+                java.nio.file.Files.copy(src.toPath(), File(dir, src.name).toPath())
             }
-            toast("复制成功")
+            toast("Success")
         } catch (e: Exception) {
-            toast("复制失败 需要ROOT")
+            toast("Failed")
         }
     }
 
-    private fun moveFile(src: java.io.File, dir: java.io.File) {
+    private fun moveFile(src: File, dir: File) {
         (application as App).execSu("mv ${src.absolutePath} ${dir.absolutePath}/")
-        toast("移动成功")
+        toast("Success")
     }
 
-    private fun delFile(file: java.io.File) {
+    private fun delFile(file: File) {
         AlertDialog.Builder(this)
-            .setTitle("确认删除")
+            .setTitle("Confirm")
             .setMessage(file.name)
-            .setPositiveButton("删除") { _, _ ->
+            .setPositiveButton("OK") { _, _ ->
                 (application as App).execSu("rm -rf ${file.absolutePath}")
-                toast("已删除")
+                toast("Deleted")
             }.show()
     }
 
-    private fun chmod777(file: java.io.File) {
+    private fun chmod777(file: File) {
         (application as App).execSu("chmod 777 ${file.absolutePath}")
-        toast("权限已修改")
+        toast("Complete")
     }
 
     private fun toast(text: String) {
