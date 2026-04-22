@@ -14,7 +14,6 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        // 仅适配你的联想Y700四代 arm64-v8a
         ndk {
             abiFilters.clear()
             abiFilters.add("arm64-v8a")
@@ -23,8 +22,8 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled(true)
-            shrinkResources(true)
+            minifyEnabled = true
+            shrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -41,6 +40,7 @@ android {
         jvmTarget = "17"
     }
 
+    // 关键：关闭Lint严格检测，杜绝打包失败
     lint {
         checkReleaseBuilds = false
         abortOnError = false
@@ -48,7 +48,6 @@ android {
 }
 
 dependencies {
-    // 仅原生基础依赖，无多余第三方库
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
 }
