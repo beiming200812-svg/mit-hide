@@ -48,8 +48,7 @@ android {
 }
 
 dependencies {
+    // 仅原生基础依赖，无多余第三方库
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
-    // 补上缺失的Material主题依赖，彻底解决主题找不到报错
-    implementation("com.google.android.material:material:1.12.0")
 }
