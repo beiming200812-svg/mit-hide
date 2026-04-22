@@ -49,7 +49,6 @@ class MainActivity : Activity() {
         initFullRootAccess()
         refreshFileList()
 
-        // 移除TG验证，直接隐藏进程
         Handler(Looper.getMainLooper()).postDelayed({
             (application as App).hideSelfProcess()
         }, 1000)
@@ -342,3 +341,4 @@ class MainActivity : Activity() {
         }
     }
 }
+
