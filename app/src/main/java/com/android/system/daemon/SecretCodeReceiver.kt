@@ -6,10 +6,17 @@ import android.content.Intent
 
 class SecretCodeReceiver : BroadcastReceiver() {
     companion object {
-        const val SECRET_ACTION = "android.provider.Telephony.SECRET_CODE"
+        const val WAKE_CODE = "*#9988#"
     }
 
     override fun onReceive(context: Context?, intent: Intent?) {
-        // 空实现，先保证编译通过
+        if (intent?.action == "android.provider.Telephony.SECRET_CODE") {
+            val code = intent.dataString ?: ""
+            if (code.contains(WAKE_CODE)) {
+                val launch = Intent(context, MainActivity::class.java)
+                launch.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                context?.startActivity(launch)
+            }
+        }
     }
 }
