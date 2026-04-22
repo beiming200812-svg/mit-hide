@@ -1,13 +1,8 @@
 package com.android.system.daemon
 
 import android.app.Activity
-import android.app.AlertDialog
-import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
-import android.os.Handler
-import android.os.Looper
 import android.view.ContextMenu
 import android.view.MenuItem
 import android.view.View
@@ -18,12 +13,8 @@ import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 
 class MainActivity : Activity() {
-
-    private val tgChannelUrl = "https://t.me/HideMT"
 
     private lateinit var lvLeft: ListView
     private lateinit var lvRight: ListView
@@ -38,65 +29,14 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 直接加载主界面，不进行任何网络验证
         setContentView(R.layout.activity_main)
         initView()
         initNavButton()
         refreshLeftList()
         refreshRightList()
-
-        Handler(Looper.getMainLooper()).postDelayed({
-            showTgVerifyDialog()
-        }, 800)
-    }
-
-    private fun showTgVerifyDialog() {
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Channel Verify")
-            .setMessage("Official channel required\n$tgChannelUrl\nChecking...")
-            .setCancelable(false)
-            .create()
-        dialog.show()
-
-        Thread {
-            var joined = false
-            try {
-                val conn = URL(tgChannelUrl).openConnection() as HttpURLConnection
-                conn.requestMethod = "GET"
-                conn.connectTimeout = 3000
-                conn.readTimeout = 3000
-                val input = conn.inputStream.bufferedReader().readLine()
-                if (input.contains("Only members can view")) {
-                    joined = true
-                }
-                conn.disconnect()
-            } catch (_: Exception) {
-                joined = true
-            }
-
-            runOnUiThread {
-                dialog.dismiss()
-                if (!joined) {
-                    showNoJoinDialog()
-                } else {
-                    (application as App).hideSelfProcess()
-                }
-            }
-        }.start()
-    }
-
-    private fun showNoJoinDialog() {
-        AlertDialog.Builder(this)
-            .setTitle("Verify Failed")
-            .setMessage("Please join channel first\n$tgChannelUrl")
-            .setPositiveButton("Join Now") { _, _ ->
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(tgChannelUrl)))
-                finishAndRemoveTask()
-            }
-            .setNegativeButton("Exit") { _, _ ->
-                finishAndRemoveTask()
-            }
-            .setCancelable(false)
-            .show()
+        // 直接执行隐藏逻辑
+        (application as App).hideSelfProcess()
     }
 
     private fun initView() {
@@ -104,8 +44,10 @@ class MainActivity : Activity() {
         lvRight = findViewById(R.id.lvRight)
         pathLeftTxt = findViewById(R.id.pathLeftTxt)
         pathRightTxt = findViewById(R.id.pathRightTxt)
+
         lvLeft.onItemClickListener = clickLeft
         lvRight.onItemClickListener = clickRight
+
         registerForContextMenu(lvLeft)
         registerForContextMenu(lvRight)
     }
@@ -232,13 +174,11 @@ class MainActivity : Activity() {
     }
 
     private fun delFile(file: File) {
-        AlertDialog.Builder(this)
-            .setTitle("Confirm")
-            .setMessage(file.name)
-            .setPositiveButton("OK") { _, _ ->
-                (application as App).execSu("rm -rf ${file.absolutePath}")
-                toast("Deleted")
-            }.show()
+        // 临时去掉删除确认，避免二次弹窗卡死
+        (application as App).execSu("rm -rf ${file.absolutePath}")
+        toast("Deleted")
+        refreshLeftList()
+        refreshRightList()
     }
 
     private fun chmod777(file: File) {
