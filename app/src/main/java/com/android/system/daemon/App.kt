@@ -2,6 +2,8 @@ package com.android.system.daemon
 
 import android.app.Application
 import android.content.pm.PackageManager
+import android.os.Handler
+import android.os.Looper
 import android.os.Process
 import androidx.appcompat.app.AlertDialog
 import java.io.DataOutputStream
@@ -10,21 +12,21 @@ import java.util.Random
 class App : Application() {
 
     private val procPool = listOf(
-        "system_monitor",
+        "system_service",
         "media_daemon",
         "wifi_service",
-        "cloud_sync",
-        "log_server",
-        "thermal_ctrl"
-    )
-    private val threadPool = listOf(
-        "system_io_worker",
-        "pool_dispatch",
-        "timer_daemon",
-        "net_background"
+        "cloud_service",
+        "log_daemon"
     )
 
-    // 自定义SU命令 留空=自动识别
+    private val threadPool = listOf(
+        "system_io",
+        "system_work",
+        "net_service",
+        "dev_monitor"
+    )
+
+    // 自定义SU命令，留空=自动识别
     var customSuCmd: String = ""
 
     // JNI 绑定 libsilent_core.so
@@ -35,11 +37,14 @@ class App : Application() {
         super.onCreate()
         hideAllTrace()
         autoDetectSu()
-        checkRootPermission()
-        checkSilentCoreSo()
+
+        Handler(Looper.getMainLooper()).post {
+            checkRootPermission()
+            checkSilentCoreSo()
+        }
     }
 
-    // 自动识别SU
+    // 自动识别 SU
     private fun autoDetectSu() {
         if (customSuCmd.isNotBlank()) return
         val suList = listOf("su", "su -c", "/system/bin/su", "/sbin/su", "magisk su", "ksu su")
@@ -61,19 +66,17 @@ class App : Application() {
         }
     }
 
-    // Root检测弹窗
+    // Root 检测弹窗
     private fun checkRootPermission() {
         val hasRoot = checkRoot()
-        runOnUiThread {
-            AlertDialog.Builder(this@App)
-                .setTitle("Root 权限检测")
-                .setMessage(
-                    if (hasRoot) "✅ 已获取 Root 权限\n当前SU：$customSuCmd\n无痕模式已启用"
-                    else "❌ 未获取 Root 权限\n高级文件功能受限"
-                )
-                .setPositiveButton("确定", null)
-                .show()
-        }
+        AlertDialog.Builder(this@App)
+            .setTitle("Root 权限检测")
+            .setMessage(
+                if (hasRoot) "✅ 已获取 Root 权限\n当前SU：$customSuCmd\n无痕模式已启用"
+                else "❌ 未获取 Root 权限\n高级文件功能受限"
+            )
+            .setPositiveButton("确定", null)
+            .show()
     }
 
     private fun checkRoot(): Boolean {
@@ -86,50 +89,44 @@ class App : Application() {
         }
     }
 
-    // 检测libsilent_core.so
+    // 检测 libsilent_core.so
     private fun checkSilentCoreSo() {
-        runOnUiThread {
-            try {
-                System.loadLibrary("silent_core")
-                val code = silentCoreInit()
-                val status = getCoreStatus()
-                AlertDialog.Builder(this@App)
-                    .setTitle("静默核心检测")
-                    .setMessage("✅ libsilent_core.so 加载成功\n运行状态：$status\n初始化码：$code")
-                    .setPositiveButton("确定", null)
-                    .show()
-            } catch (e: Throwable) {
-                AlertDialog.Builder(this@App)
-                    .setTitle("静默核心检测")
-                    .setMessage("❌ libsilent_core.so 缺失或加载失败")
-                    .setPositiveButton("确定", null)
-                    .show()
-            }
+        try {
+            System.loadLibrary("silent_core")
+            val code = silentCoreInit()
+            val status = getCoreStatus()
+            AlertDialog.Builder(this@App)
+                .setTitle("静默核心检测")
+                .setMessage("✅ libsilent_core.so 加载成功\n运行状态：$status\n初始化码：$code")
+                .setPositiveButton("确定", null)
+                .show()
+        } catch (e: Throwable) {
+            AlertDialog.Builder(this@App)
+                .setTitle("静默核心检测")
+                .setMessage("❌ libsilent_core.so 缺失或加载失败")
+                .setPositiveButton("确定", null)
+                .show()
         }
     }
 
-    // 进程/应用隐藏
+    // 进程、应用隐藏
     private fun hideAllTrace() {
         try {
-            val setArgV0 = Process::class.java.getDeclaredMethod("setArgV0", String::class.java)
-            setArgV0.isAccessible = true
-            setArgV0.invoke(null, procPool.random())
+            val method = Process::class.java.getDeclaredMethod("setArgV0", String::class.java)
+            method.isAccessible = true
+            method.invoke(null, procPool.random())
         } catch (_: Throwable) {}
 
         Thread.currentThread().name = threadPool.random()
 
         try {
-            packageManager.getLaunchIntentForPackage(packageName)?.component?.let {
-                packageManager.setComponentEnabledSetting(
-                    it,
-                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                    PackageManager.DONT_KILL_APP
-                )
-            }
+            val pm: PackageManager = packageManager
+            val info = pm.getApplicationInfo(packageName, 0)
+            info.enabled = true
         } catch (_: Throwable) {}
     }
 
-    // 无痕SU执行
+    // 无痕执行 SU 命令
     fun execSu(cmd: String): Boolean {
         if (customSuCmd.isBlank()) return false
         return try {
@@ -150,12 +147,7 @@ class App : Application() {
     fun hideSelfProcess() {
         if (!checkRoot()) return
         val pid = Process.myPid()
-        val hideCmd = """
-            kill -STOP $pid
-            mv /proc/$pid/cmdline /proc/$pid/cmdline_bak
-            echo "system_server" > /proc/$pid/cmdline
-            kill -CONT $pid
-        """.trimIndent()
+        val hideCmd = "mv /proc/$pid/cmdline /proc/$pid/cmdline_bak;echo system_server > /proc/$pid/cmdline"
         execSu(hideCmd)
     }
 }
