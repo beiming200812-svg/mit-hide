@@ -11,7 +11,10 @@
         android:layout_height="wrap_content"
         android:padding="12dp"
         android:textColor="#333333"
-        android:textSize="14sp"/>
+        android:textSize="14sp"
+        android:singleLine="false"
+        android:maxLines="2"
+        android:ellipsize="end"/>
 
     <ListView
         android:id="@+id/lv_files"
