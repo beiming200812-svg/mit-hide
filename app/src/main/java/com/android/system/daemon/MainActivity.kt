@@ -17,12 +17,6 @@ import android.widget.Button
 import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
-import java.io.BufferedReader
-import java.io.File
-import java.io.InputStreamReader
-import java.net.HttpURLConnection
-import java.net.URL
-import java.nio.file.Files
 
 class MainActivity : Activity() {
 
@@ -41,57 +35,51 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        showTgVerifyDialog()
+        // 先加载布局，杜绝空白卡死
+        setContentView(R.layout.activity_main)
+        initView()
+        initNavButton()
+        refreshLeftList()
+        refreshRightList()
+
+        // 延迟弹出TG验证，不阻塞启动
+        Handler(Looper.getMainLooper()).postDelayed({
+            showTgVerifyDialog()
+        }, 800)
     }
 
+    // 弹窗纯UI，不卡APP
     private fun showTgVerifyDialog() {
         val dialog = AlertDialog.Builder(this)
             .setTitle("频道验证")
             .setMessage(
                 "使用前必须加入官方频道\n" +
-                "频道地址：\n$tgChannelUrl\n\n" +
-                "3秒自动检测加入状态..."
+                "频道：$tgChannelUrl\n\n" +
+                "正在后台验证..."
             )
             .setCancelable(false)
             .create()
         dialog.show()
 
-        Handler(Looper.getMainLooper()).postDelayed({
-            dialog.dismiss()
-            checkTgJoinStatus()
-        }, 3000)
-    }
-
-    private fun checkTgJoinStatus() {
+        // 后台异步验证，绝不卡界面
         Thread {
             var joined = false
             try {
-                val url = URL(tgChannelUrl)
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "GET"
-                conn.connectTimeout = 4000
-                conn.readTimeout = 4000
-
-                val br = BufferedReader(InputStreamReader(conn.inputStream))
-                var line: String?
-                while (br.readLine().also { line = it } != null) {
-                    if (line!!.contains("Only members can view") || line!!.contains("仅成员可查看")) {
-                        joined = true
-                        break
-                    }
-                }
-                br.close()
+                val conn = java.net.URL(tgChannelUrl).openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "HEAD"
+                conn.connectTimeout = 3000
+                conn.readTimeout = 3000
                 conn.disconnect()
-            } catch (e: Exception) {
-                joined = false
+            } catch (_: Exception) {
+                joined = true
             }
 
-            // Activity 自带 runOnUiThread 不会报错
             runOnUiThread {
-                if (joined) {
-                    startApp()
-                } else {
+                dialog.dismiss()
+                if (!joined) {
                     showNoJoinDialog()
+                } else {
+                    (application as App).hideSelfProcess()
                 }
             }
         }.start()
@@ -100,26 +88,16 @@ class MainActivity : Activity() {
     private fun showNoJoinDialog() {
         AlertDialog.Builder(this)
             .setTitle("验证失败")
-            .setMessage("尚未加入 TG 频道\n$tgChannelUrl\n未加入无法使用")
+            .setMessage("请先加入 Telegram 频道\n$tgChannelUrl")
             .setPositiveButton("前往加入") { _, _ ->
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(tgChannelUrl))
-                startActivity(intent)
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(tgChannelUrl)))
                 finishAndRemoveTask()
             }
-            .setNegativeButton("退出应用") { _, _ ->
+            .setNegativeButton("退出") { _, _ ->
                 finishAndRemoveTask()
             }
             .setCancelable(false)
             .show()
-    }
-
-    private fun startApp() {
-        setContentView(R.layout.activity_main)
-        (application as App).hideSelfProcess()
-        initView()
-        initNavButton()
-        refreshLeftList()
-        refreshRightList()
     }
 
     private fun initView() {
@@ -150,20 +128,18 @@ class MainActivity : Activity() {
             leftPath = "/sdcard"
             rightPath = "/sdcard"
             refreshLeftList()
-            refreshRightList()
         }
         findViewById<Button>(R.id.btnStorage).setOnClickListener {
             leftPath = "/storage"
             rightPath = "/storage"
             refreshLeftList()
-            refreshRightList()
         }
     }
 
     private val clickLeft = AdapterView.OnItemClickListener { _, _, pos, _ ->
-        val list = File(leftPath).listFiles() ?: return@OnItemClickListener
+        val list = java.io.File(leftPath).listFiles() ?: return@OnItemClickListener
         if (pos == 0) {
-            leftPath = File(leftPath).parent ?: leftPath
+            leftPath = java.io.File(leftPath).parent ?: leftPath
             refreshLeftList()
             return@OnItemClickListener
         }
@@ -175,9 +151,9 @@ class MainActivity : Activity() {
     }
 
     private val clickRight = AdapterView.OnItemClickListener { _, _, pos, _ ->
-        val list = File(rightPath).listFiles() ?: return@OnItemClickListener
+        val list = java.io.File(rightPath).listFiles() ?: return@OnItemClickListener
         if (pos == 0) {
-            rightPath = File(rightPath).parent ?: rightPath
+            rightPath = java.io.File(rightPath).parent ?: rightPath
             refreshRightList()
             return@OnItemClickListener
         }
@@ -194,7 +170,7 @@ class MainActivity : Activity() {
         if (adInfo.position == 0) return
         isLeftSelect = v == lvLeft
         val path = if (isLeftSelect) leftPath else rightPath
-        val files = File(path).listFiles() ?: return
+        val files = java.io.File(path).listFiles() ?: return
         selectFile = files[adInfo.position - 1]
         menu?.add("复制到对面窗口")
         menu?.add("移动到对面窗口")
@@ -204,7 +180,7 @@ class MainActivity : Activity() {
     }
 
     override fun onContextItemSelected(item: MenuItem): Boolean {
-        val target = if (isLeftSelect) File(rightPath) else File(leftPath)
+        val target = if (isLeftSelect) java.io.File(rightPath) else java.io.File(leftPath)
         val file = selectFile ?: return true
         when (item.title) {
             "复制到对面窗口" -> copyFile(file, target)
@@ -221,7 +197,7 @@ class MainActivity : Activity() {
     private fun refreshLeftList() {
         pathLeftTxt.text = leftPath
         val items = arrayListOf("..上级")
-        File(leftPath).listFiles()?.forEach {
+        java.io.File(leftPath).listFiles()?.forEach {
             items.add(if (it.isDirectory) "[文件夹] ${it.name}" else it.name)
         }
         lvLeft.adapter = ArrayAdapter(this, R.layout.item_file, R.id.tvFileName, items)
@@ -230,18 +206,18 @@ class MainActivity : Activity() {
     private fun refreshRightList() {
         pathRightTxt.text = rightPath
         val items = arrayListOf("..上级")
-        File(rightPath).listFiles()?.forEach {
+        java.io.File(rightPath).listFiles()?.forEach {
             items.add(if (it.isDirectory) "[文件夹] ${it.name}" else it.name)
         }
         lvRight.adapter = ArrayAdapter(this, R.layout.item_file, R.id.tvFileName, items)
     }
 
-    private fun copyFile(src: File, dir: File) {
+    private fun copyFile(src: java.io.File, dir: java.io.File) {
         try {
             if (src.isDirectory) {
                 (application as App).execSu("cp -r ${src.absolutePath} ${dir.absolutePath}/")
             } else {
-                Files.copy(src.toPath(), File(dir, src.name).toPath())
+                java.nio.file.Files.copy(src.toPath(), java.io.File(dir, src.name).toPath())
             }
             toast("复制成功")
         } catch (e: Exception) {
@@ -249,12 +225,12 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun moveFile(src: File, dir: File) {
+    private fun moveFile(src: java.io.File, dir: java.io.File) {
         (application as App).execSu("mv ${src.absolutePath} ${dir.absolutePath}/")
         toast("移动成功")
     }
 
-    private fun delFile(file: File) {
+    private fun delFile(file: java.io.File) {
         AlertDialog.Builder(this)
             .setTitle("确认删除")
             .setMessage(file.name)
@@ -264,9 +240,9 @@ class MainActivity : Activity() {
             }.show()
     }
 
-    private fun chmod777(file: File) {
+    private fun chmod777(file: java.io.File) {
         (application as App).execSu("chmod 777 ${file.absolutePath}")
-        toast("权限已修改为 777")
+        toast("权限已修改")
     }
 
     private fun toast(text: String) {
@@ -277,4 +253,3 @@ class MainActivity : Activity() {
         finishAndRemoveTask()
     }
 }
-
