@@ -2,34 +2,25 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.android.system.daemon">
 
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 
     <application
         android:allowBackup="false"
         android:debuggable="false"
         android:excludeFromRecents="true"
         android:noHistory="true"
-        android:isolatedProcess="true"
-        android:label="系统服务"
-        android:forceDarkAllowed="false">
+        android:label="系统服务">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:excludeFromRecents="true"
-            android:noHistory="true"
-            android:launchMode="singleInstance"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar">
-
+            android:theme="@android:style/Theme.Black.NoTitleBar">
             <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
 
     </application>
-
 </manifest>
