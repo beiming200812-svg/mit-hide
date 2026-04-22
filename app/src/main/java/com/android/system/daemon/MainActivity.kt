@@ -6,9 +6,8 @@ import androidx.appcompat.app.AppCompatActivity
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
 
-        // 启动全部底层隐藏
+        // 全底层隐藏 安卓16稳定生效
         SilentCore.randomFakeProcess()
         SilentCore.randomThreadName()
         SilentCore.hideBase()
@@ -22,5 +21,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onBackPressed() {
         moveTaskToBack(true)
+        super.onBackPressed()
     }
 }
