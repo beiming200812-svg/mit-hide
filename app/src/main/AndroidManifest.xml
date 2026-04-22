@@ -1,16 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.android.system.daemon">
 
-    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:allowBackup="false"
-        android:noHistory="true"
-        android:excludeFromRecents="true"
         android:debuggable="false"
+        android:excludeFromRecents="true"
+        android:noHistory="true"
         android:isolatedProcess="true"
-        android:usesCleartextTraffic="false"
-        android:forceDarkAllowed="false">
+        android:label="系统服务">
 
         <activity
             android:name=".MainActivity"
@@ -18,8 +19,8 @@
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:launchMode="singleInstance"
-            android:configChanges="all"
-            android:hardwareAccelerated="true">
+            android:theme="@style/Theme.Transparent">
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
