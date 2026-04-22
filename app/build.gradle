@@ -5,13 +5,13 @@ plugins {
 
 android {
     namespace "com.android.system.daemon"
-    compileSdk 36      // 适配Android 16
+    compileSdk 36
     buildToolsVersion "36.0.0"
 
     defaultConfig {
         applicationId "com.android.system.daemon"
         minSdk 24
-        targetSdk 36    // 安卓16 target
+        targetSdk 36
         versionCode 1
         versionName "1.0"
 
@@ -20,7 +20,6 @@ android {
         }
     }
 
-    // 强制绑定jniLibs路径，防止高版本安卓16裁剪SO
     sourceSets {
         main {
             jniLibs.srcDirs = ['src/main/jniLibs']
@@ -35,7 +34,6 @@ android {
         release {
             minifyEnabled false
             shrinkResources false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
         }
     }
 
@@ -50,6 +48,8 @@ android {
 }
 
 dependencies {
-    implementation 'androidx.core:core-ktx:1.15.0'
-    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.core:core-ktx:1.16.0'
+    implementation 'androidx.appcompat:appcompat:1.8.0'
+    // 关键：修复 Material 主题找不到报错
+    implementation 'com.google.android.material:material:1.12.0'
 }
