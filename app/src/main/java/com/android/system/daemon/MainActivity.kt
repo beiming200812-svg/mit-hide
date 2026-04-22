@@ -58,8 +58,41 @@ class MainActivity : Activity() {
         filesListView = findViewById(R.id.lv_files)
         pathText = findViewById(R.id.tv_path)
 
+        // 自动适配屏幕分辨率，防止文字溢出边框
+        autoScaleTextByResolution()
+
         filesListView.onItemClickListener = itemClickListener
         registerForContextMenu(filesListView)
+    }
+
+    /** 自动识别屏幕比例 & 分辨率，动态缩放文字，保证不出边框 */
+    private fun autoScaleTextByResolution() {
+        val display = windowManager.defaultDisplay
+        val width = display.width
+        val height = display.height
+
+        // 以 1080p 为基准，计算屏幕比例系数
+        val scaleX = width / 1080f
+        val scaleY = height / 2340f
+        val scale = scaleX.coerceAtMost(scaleY)
+
+        // 根据屏幕密度缩放文字大小
+        val baseTextSize = 14f // 基准 14sp
+        val scaledTextSize = (baseTextSize * scale).coerceAtLeast(10f).coerceAtMost(18f)
+
+        // 应用到路径栏文字
+        pathText.textSize = scaledTextSize
+
+        // 应用到 ListView 子项文字（通过动态生成 View）
+        filesListView.adapter = object : ArrayAdapter<File>(this, android.R.layout.simple_list_item_1) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val view = super.getView(position, convertView, parent)
+                val text = view.findViewById<TextView>(android.R.id.text1)
+                text.textSize = scaledTextSize
+                text.setTextColor(Color.parseColor("#333333"))
+                return view
+            }
+        }
     }
 
     private fun requestStoragePermissions() {
@@ -158,8 +191,9 @@ class MainActivity : Activity() {
                 else -> it.name
             }
         }
-        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, displayList)
-        filesListView.adapter = adapter
+        (filesListView.adapter as ArrayAdapter<String>).clear()
+        (filesListView.adapter as ArrayAdapter<String>).addAll(displayList)
+        (filesListView.adapter as ArrayAdapter<String>).notifyDataSetChanged()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -341,4 +375,3 @@ class MainActivity : Activity() {
         }
     }
 }
-
